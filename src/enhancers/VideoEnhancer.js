@@ -21,6 +21,13 @@ export class VideoEnhancer extends BaseEnhancer {
           type: 'suggestion',
           severity: 'warning',
         });
+      } else if (!this.hasCaptions(video)) {
+        items.push({
+          message: 'Vidéo avec sous-titres mais sans kind="captions" (RGAA 4.3.2)',
+          element: video,
+          type: 'suggestion',
+          severity: 'info',
+        });
       }
 
       if (!video.getAttribute('aria-label') && !video.getAttribute('aria-labelledby')) {
@@ -35,6 +42,23 @@ export class VideoEnhancer extends BaseEnhancer {
       }
     });
 
+    document.querySelectorAll('audio').forEach((audio) => {
+      const hasTranscript =
+        audio.nextElementSibling?.tagName === 'A' ||
+        audio.previousElementSibling?.tagName === 'A' ||
+        (audio.textContent || '').trim().length > 0;
+      if (!hasTranscript) {
+        const src = audio.querySelector('source')?.getAttribute('src') || '(sans source)';
+        const short = src.split('/').pop().split('?')[0] || src;
+        items.push({
+          message: `Audio sans transcription : ${short}`,
+          element: audio,
+          type: 'suggestion',
+          severity: 'warning',
+        });
+      }
+    });
+
     return items;
   }
 
@@ -45,6 +69,15 @@ export class VideoEnhancer extends BaseEnhancer {
       if (kind === 'subtitles' || kind === 'captions') {
         return true;
       }
+    }
+    return false;
+  }
+
+  hasCaptions(video) {
+    const tracks = video.querySelectorAll('track');
+    for (const track of tracks) {
+      const kind = (track.getAttribute('kind') || '').toLowerCase();
+      if (kind === 'captions') return true;
     }
     return false;
   }

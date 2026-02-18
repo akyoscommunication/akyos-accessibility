@@ -42,7 +42,26 @@ export class HeadingEnhancer extends BaseEnhancer {
           severity: 'warning',
         });
       }
+      if (!(h.textContent || '').trim()) {
+        items.push({
+          message: `Titre vide : <${h.tagName.toLowerCase()}>`,
+          element: h,
+          type: 'suggestion',
+          severity: 'warning',
+        });
+      }
       prevLevel = level;
+    });
+
+    document.querySelectorAll('[role="heading"]').forEach((el) => {
+      if (!el.hasAttribute('aria-level')) {
+        items.push({
+          message: 'Élément avec role="heading" sans aria-level',
+          element: el,
+          type: 'suggestion',
+          severity: 'warning',
+        });
+      }
     });
 
     return items;

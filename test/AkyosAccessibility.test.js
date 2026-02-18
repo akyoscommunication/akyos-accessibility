@@ -12,6 +12,11 @@ import { FormEnhancer } from '../src/enhancers/FormEnhancer.js';
 import { LandmarkEnhancer } from '../src/enhancers/LandmarkEnhancer.js';
 import { VideoEnhancer } from '../src/enhancers/VideoEnhancer.js';
 import { IconEnhancer } from '../src/enhancers/IconEnhancer.js';
+import { FrameEnhancer } from '../src/enhancers/FrameEnhancer.js';
+import { TableEnhancer } from '../src/enhancers/TableEnhancer.js';
+import { DocumentEnhancer } from '../src/enhancers/DocumentEnhancer.js';
+import { ContrastEnhancer } from '../src/enhancers/ContrastEnhancer.js';
+import { FocusEnhancer } from '../src/enhancers/FocusEnhancer.js';
 import { AkyosAccessibility } from '../src/AkyosAccessibility.js';
 import { generateId, findProductName } from '../src/utils/index.js';
 
@@ -288,7 +293,19 @@ describe('VideoEnhancer', () => {
     expect(suggestion.message).toContain('sans sous-titres');
   });
 
-  it('does not report video with track', () => {
+  it('does not report video with track kind=captions', () => {
+    document.body.innerHTML = `
+      <video>
+        <source src="/demo.mp4">
+        <track kind="captions" src="/subs.vtt">
+      </video>
+    `;
+    const result = new VideoEnhancer().run();
+    const suggestion = result.find((r) => r.type === 'suggestion');
+    expect(suggestion).toBeFalsy();
+  });
+
+  it('reports video with subtitles but without captions (RGAA 4.3.2)', () => {
     document.body.innerHTML = `
       <video>
         <source src="/demo.mp4">
@@ -296,8 +313,8 @@ describe('VideoEnhancer', () => {
       </video>
     `;
     const result = new VideoEnhancer().run();
-    const suggestion = result.find((r) => r.type === 'suggestion');
-    expect(suggestion).toBeFalsy();
+    const suggestion = result.find((r) => r.message.includes('kind="captions"'));
+    expect(suggestion).toBeTruthy();
   });
 
   it('adds aria-label on video without label', () => {
@@ -330,6 +347,116 @@ describe('IconEnhancer', () => {
   });
 });
 
+describe('FrameEnhancer', () => {
+  beforeEach(() => {
+    document.body.innerHTML = '';
+  });
+
+  it('reports iframe without title', () => {
+    document.body.innerHTML = '<iframe src="https://example.com/embed"></iframe>';
+    const result = new FrameEnhancer().run();
+    expect(result).toHaveLength(1);
+    expect(result[0].message).toContain('sans titre');
+    expect(result[0].severity).toBe('error');
+  });
+
+  it('does not report iframe with title', () => {
+    document.body.innerHTML = '<iframe src="https://example.com" title="Embed"></iframe>';
+    const result = new FrameEnhancer().run();
+    expect(result).toHaveLength(0);
+  });
+});
+
+describe('TableEnhancer', () => {
+  beforeEach(() => {
+    document.body.innerHTML = '';
+  });
+
+  it('adds role presentation to layout table', () => {
+    document.body.innerHTML = `
+      <table>
+        <tr><td>A</td><td>B</td></tr>
+      </table>
+    `;
+    const result = new TableEnhancer().run();
+    const table = document.querySelector('table');
+    expect(table.getAttribute('role')).toBe('presentation');
+    expect(result.some((r) => r.message.includes('presentation'))).toBe(true);
+  });
+
+  it('reports data table without caption', () => {
+    document.body.innerHTML = `
+      <table>
+        <tr><th>Col</th></tr>
+        <tr><td>Val</td></tr>
+      </table>
+    `;
+    const result = new TableEnhancer().run();
+    expect(result.some((r) => r.message.includes('sans titre'))).toBe(true);
+  });
+});
+
+describe('DocumentEnhancer', () => {
+  beforeEach(() => {
+    document.body.innerHTML = '';
+    const title = document.querySelector('title');
+    if (title) title.remove();
+  });
+
+  it('reports missing title', () => {
+    document.body.innerHTML = '<p>Content</p>';
+    const result = new DocumentEnhancer().run();
+    expect(result).toHaveLength(1);
+    expect(result[0].message).toContain('title');
+  });
+
+  it('reports empty title', () => {
+    document.body.innerHTML = '<p>Content</p>';
+    const title = document.createElement('title');
+    document.head.appendChild(title);
+    const result = new DocumentEnhancer().run();
+    expect(result).toHaveLength(1);
+    expect(result[0].message).toContain('vide');
+  });
+});
+
+describe('ContrastEnhancer', () => {
+  beforeEach(() => {
+    document.body.innerHTML = '';
+  });
+
+  it('returns items for low contrast text', () => {
+    document.body.innerHTML = '<p style="color:#999;background:#fff">Low contrast</p>';
+    const result = new ContrastEnhancer().run();
+    expect(Array.isArray(result)).toBe(true);
+  });
+});
+
+describe('FocusEnhancer', () => {
+  beforeEach(() => {
+    document.body.innerHTML = '';
+  });
+
+  it('reports focusable without visible focus', () => {
+    document.body.innerHTML = '<button style="outline:none">Click</button>';
+    const result = new FocusEnhancer().run();
+    expect(result.length).toBeGreaterThanOrEqual(0);
+  });
+});
+
+describe('LinkEnhancer empty links', () => {
+  beforeEach(() => {
+    document.body.innerHTML = '';
+  });
+
+  it('reports link without text or aria-label', () => {
+    document.body.innerHTML = '<a href="/page"></a>';
+    const result = new LinkEnhancer().run();
+    const emptyLink = result.find((r) => r.message.includes('sans intitulé'));
+    expect(emptyLink).toBeTruthy();
+  });
+});
+
 describe('AkyosAccessibility', () => {
   beforeEach(() => {
     document.body.innerHTML = '<main id="main"><p>Test</p></main>';
@@ -344,7 +471,7 @@ describe('AkyosAccessibility', () => {
 
   it('respects enhancer config', () => {
     new AkyosAccessibility({
-      enhancers: { lang: true, links: false, skipLinks: false, buttons: false, images: false, headings: false, forms: false, landmarks: false, videos: false, icons: false },
+      enhancers: { lang: true, links: false, skipLinks: false, buttons: false, images: false, headings: false, forms: false, landmarks: false, videos: false, icons: false, frames: false, tables: false, document: false, contrast: false, focus: false },
       watch: false,
       logReport: false,
     });

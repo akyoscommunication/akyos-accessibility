@@ -28,6 +28,25 @@ export class IconEnhancer extends BaseEnhancer {
       });
     });
 
+    document.querySelectorAll('div svg, span svg').forEach((svg) => {
+      if (svg.closest('a, button')) return;
+      if (svg.getAttribute('aria-hidden') === 'true') return;
+      if (svg.getAttribute('role') === 'img') return;
+      if (svg.querySelector('title')?.textContent?.trim()) return;
+      if (svg.getAttribute('aria-label')) return;
+      if (svg.getAttribute('aria-labelledby')) return;
+      if (svg.closest('svg')) return;
+
+      if (this.looksDecorative(svg)) {
+        svg.setAttribute('aria-hidden', 'true');
+        items.push({
+          message: 'aria-hidden="true" ajouté sur SVG décoratif isolé',
+          element: svg,
+          type: 'enhancement',
+        });
+      }
+    });
+
     return items;
   }
 
@@ -47,5 +66,15 @@ export class IconEnhancer extends BaseEnhancer {
     });
 
     return hasSvg && !hasNonSvg;
+  }
+
+  looksDecorative(svg) {
+    const hasText = svg.querySelector('text');
+    const hasUse = svg.querySelector('use');
+    const viewBox = svg.getAttribute('viewBox');
+    const width = parseFloat(svg.getAttribute('width')) || 0;
+    const height = parseFloat(svg.getAttribute('height')) || 0;
+    if (hasText) return false;
+    return (viewBox || width > 0 || height > 0) && !svg.closest('a, button');
   }
 }

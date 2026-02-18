@@ -3,13 +3,14 @@ import { BaseEnhancer } from './BaseEnhancer.js';
 const EXTERNAL_LINK_SUFFIX = ' (ouvre dans un nouvel onglet)';
 
 /**
- * Améliore les liens target="_blank" : ajoute rel="noopener noreferrer" et aria-label.
+ * Améliore les liens target="_blank" et audite les liens vides.
+ * RGAA 6 - Liens.
  */
 export class LinkEnhancer extends BaseEnhancer {
   run() {
-    const links = document.querySelectorAll('a[target="_blank"]');
     const items = [];
-    links.forEach((link) => {
+
+    document.querySelectorAll('a[target="_blank"]').forEach((link) => {
       let modified = false;
       if (!link.hasAttribute('rel') || !link.rel.includes('noopener')) {
         const rel = link.getAttribute('rel') || '';
@@ -36,6 +37,24 @@ export class LinkEnhancer extends BaseEnhancer {
         });
       }
     });
+
+    document.querySelectorAll('a[href]').forEach((link) => {
+      const hasText = (link.textContent || '').trim().length > 0;
+      const hasAriaLabel = link.getAttribute('aria-label')?.trim().length > 0;
+      const hasImgAlt = link.querySelector('img[alt]');
+      const hasImgAriaLabel = link.querySelector('img[aria-label]');
+
+      if (!hasText && !hasAriaLabel && !hasImgAlt && !hasImgAriaLabel) {
+        const href = link.getAttribute('href') || '#';
+        items.push({
+          message: `Lien sans intitulé : ${href.substring(0, 40)}${href.length > 40 ? '…' : ''}`,
+          element: link,
+          type: 'suggestion',
+          severity: 'error',
+        });
+      }
+    });
+
     return items;
   }
 }

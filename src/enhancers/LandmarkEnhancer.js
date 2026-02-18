@@ -20,6 +20,20 @@ export class LandmarkEnhancer extends BaseEnhancer {
     let navIndex = 0;
 
     const mains = document.querySelectorAll('main');
+    const visibleMains = Array.from(mains).filter((m) => {
+      const style = getComputedStyle(m);
+      return style.display !== 'none' && style.visibility !== 'hidden' && !m.hasAttribute('hidden');
+    });
+    if (visibleMains.length > 1) {
+      visibleMains.forEach((m) => {
+        items.push({
+          message: `Plusieurs éléments <main> visibles (${visibleMains.length} au total)`,
+          element: m,
+          type: 'suggestion',
+          severity: 'error',
+        });
+      });
+    }
     mains.forEach((el) => {
       if (!el.getAttribute('role')) {
         el.setAttribute('role', 'main');

@@ -8,6 +8,11 @@ import { FormEnhancer } from './enhancers/FormEnhancer.js';
 import { LandmarkEnhancer } from './enhancers/LandmarkEnhancer.js';
 import { VideoEnhancer } from './enhancers/VideoEnhancer.js';
 import { IconEnhancer } from './enhancers/IconEnhancer.js';
+import { FrameEnhancer } from './enhancers/FrameEnhancer.js';
+import { TableEnhancer } from './enhancers/TableEnhancer.js';
+import { DocumentEnhancer } from './enhancers/DocumentEnhancer.js';
+import { ContrastEnhancer } from './enhancers/ContrastEnhancer.js';
+import { FocusEnhancer } from './enhancers/FocusEnhancer.js';
 import { render as renderVisualReport } from './VisualReport.js';
 import { renderAccessibilityPanel } from './AccessibilityPanel.js';
 import { getSelector } from './utils/getSelector.js';
@@ -24,6 +29,11 @@ const DEFAULT_OPTIONS = {
     landmarks: true,
     videos: true,
     icons: true,
+    frames: true,
+    tables: true,
+    document: true,
+    contrast: true,
+    focus: true,
   },
   productNameSelectors: [],
   defaultLang: 'fr',
@@ -34,7 +44,15 @@ const DEFAULT_OPTIONS = {
   accessibilityToolbar: false,
 };
 
-const SUGGESTION_CATEGORIES = new Set(['Images (audit)', 'Titres (audit)', 'Vidéos (audit)']);
+const SUGGESTION_CATEGORIES = new Set([
+  'Images (audit)',
+  'Titres (audit)',
+  'Vidéos (audit)',
+  'Cadres (audit)',
+  'Document (audit)',
+  'Contraste (audit)',
+  'Focus (audit)',
+]);
 
 const SEVERITY_DEFAULTS = { enhancement: 'info', suggestion: 'warning' };
 
@@ -149,6 +167,31 @@ export class AkyosAccessibility {
     if (enhancers.icons) {
       const e = new IconEnhancer();
       this.enhancerCategories.set(e, 'Icônes décoratives');
+      this.enhancers.push(e);
+    }
+    if (enhancers.frames) {
+      const e = new FrameEnhancer();
+      this.enhancerCategories.set(e, 'Cadres (audit)');
+      this.enhancers.push(e);
+    }
+    if (enhancers.tables) {
+      const e = new TableEnhancer();
+      this.enhancerCategories.set(e, 'Tableaux (audit)');
+      this.enhancers.push(e);
+    }
+    if (enhancers.document) {
+      const e = new DocumentEnhancer();
+      this.enhancerCategories.set(e, 'Document (audit)');
+      this.enhancers.push(e);
+    }
+    if (enhancers.contrast) {
+      const e = new ContrastEnhancer();
+      this.enhancerCategories.set(e, 'Contraste (audit)');
+      this.enhancers.push(e);
+    }
+    if (enhancers.focus) {
+      const e = new FocusEnhancer();
+      this.enhancerCategories.set(e, 'Focus (audit)');
       this.enhancers.push(e);
     }
   }

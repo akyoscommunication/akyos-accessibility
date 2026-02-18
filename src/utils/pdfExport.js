@@ -16,6 +16,11 @@ const CATEGORY_LABELS = {
   'Images (audit)': 'Images sans alt',
   'Titres (audit)': 'Hiérarchie des titres',
   'Vidéos (audit)': 'Vidéos sans sous-titres',
+  'Cadres (audit)': 'Cadres sans titre',
+  'Tableaux (audit)': 'Tableaux',
+  'Document (audit)': 'Document',
+  'Contraste (audit)': 'Contraste',
+  'Focus (audit)': 'Focus visible',
   Autre: 'Autre',
 };
 
@@ -36,6 +41,11 @@ const CATEGORY_DESCRIPTIONS = {
   'Images (audit)': 'Images sans attribut alt — à corriger manuellement pour décrire le contenu.',
   'Titres (audit)': 'Hiérarchie des titres (h1–h6) : sauts de niveau, h1 manquant ou multiples.',
   'Vidéos (audit)': 'Vidéos sans sous-titres — à ajouter pour l\'accessibilité audio.',
+  'Cadres (audit)': 'Cadres iframe/frame sans attribut title (RGAA 2.1).',
+  'Tableaux (audit)': 'Tableaux de données sans caption, en-têtes sans scope, tableaux de mise en forme.',
+  'Document (audit)': 'Éléments obligatoires : titre de page manquant ou vide (RGAA 8.5).',
+  'Contraste (audit)': 'Contraste texte/arrière-plan insuffisant (RGAA 3.2).',
+  'Focus (audit)': 'Focus non visible sur les éléments interactifs (RGAA 10.7).',
   Autre: 'Autres éléments détectés.',
 };
 
