@@ -38,9 +38,11 @@ export class ContrastEnhancer extends BaseEnhancer {
         const text = el.textContent?.trim().substring(0, 30) || '';
         items.push({
           message: `Contraste insuffisant (${ratio.toFixed(1)}:1) : ${text}${(el.textContent?.trim().length || 0) > 30 ? '…' : ''}`,
+          fix: 'Augmentez le contraste : texte plus foncé ou fond plus clair. Minimum 4.5:1 pour texte normal, 3:1 pour texte grand/gras.',
           element: el,
           type: 'suggestion',
           severity: 'warning',
+          rgaaRef: '3.2',
         });
       }
     });

@@ -18,6 +18,7 @@ import { DocumentEnhancer } from '../src/enhancers/DocumentEnhancer.js';
 import { ContrastEnhancer } from '../src/enhancers/ContrastEnhancer.js';
 import { FocusEnhancer } from '../src/enhancers/FocusEnhancer.js';
 import { AkyosAccessibility } from '../src/AkyosAccessibility.js';
+import { loadReadSpeaker } from '../src/ReadSpeakerLoader.js';
 import { generateId, findProductName } from '../src/utils/index.js';
 
 describe('generateId', () => {
@@ -352,12 +353,21 @@ describe('FrameEnhancer', () => {
     document.body.innerHTML = '';
   });
 
-  it('reports iframe without title', () => {
+  it('reports iframe without title in audit mode', () => {
     document.body.innerHTML = '<iframe src="https://example.com/embed"></iframe>';
-    const result = new FrameEnhancer().run();
+    const result = new FrameEnhancer({ auditOnly: true }).run();
     expect(result).toHaveLength(1);
     expect(result[0].message).toContain('sans titre');
     expect(result[0].severity).toBe('error');
+  });
+
+  it('adds title on iframe without title in enhance mode', () => {
+    document.body.innerHTML = '<iframe src="https://example.com/embed"></iframe>';
+    const iframe = document.querySelector('iframe');
+    const result = new FrameEnhancer().run();
+    expect(result).toHaveLength(1);
+    expect(iframe.getAttribute('title')).toBe('Contenu embarqué');
+    expect(result[0].type).toBe('enhancement');
   });
 
   it('does not report iframe with title', () => {
@@ -457,10 +467,51 @@ describe('LinkEnhancer empty links', () => {
   });
 });
 
+describe('loadReadSpeaker', () => {
+  beforeEach(() => {
+    const script = document.getElementById('akyos-readspeaker-script');
+    if (script) script.remove();
+  });
+
+  it('does nothing when options is false', () => {
+    loadReadSpeaker(false);
+    expect(document.getElementById('akyos-readspeaker-script')).toBeNull();
+  });
+
+  it('does nothing when options is undefined', () => {
+    loadReadSpeaker(undefined);
+    expect(document.getElementById('akyos-readspeaker-script')).toBeNull();
+  });
+
+  it('injects script with correct URL when readerId provided', () => {
+    loadReadSpeaker({ readerId: 'myreader', lang: 'en' });
+    const script = document.getElementById('akyos-readspeaker-script');
+    expect(script).toBeTruthy();
+    expect(script.src).toContain('myreader');
+    expect(script.src).toContain('pLang=en');
+  });
+
+  it('does not inject when readerId is empty', () => {
+    const warnSpy = jest.spyOn(console, 'warn').mockImplementation(() => {});
+    loadReadSpeaker({ readerId: '' });
+    expect(document.getElementById('akyos-readspeaker-script')).toBeNull();
+    warnSpy.mockRestore();
+  });
+
+  it('does not inject twice when called multiple times', () => {
+    loadReadSpeaker({ readerId: 'test' });
+    loadReadSpeaker({ readerId: 'test' });
+    const scripts = document.querySelectorAll('#akyos-readspeaker-script');
+    expect(scripts.length).toBe(1);
+  });
+});
+
 describe('AkyosAccessibility', () => {
   beforeEach(() => {
     document.body.innerHTML = '<main id="main"><p>Test</p></main>';
     document.documentElement.removeAttribute('lang');
+    const rsScript = document.getElementById('akyos-readspeaker-script');
+    if (rsScript) rsScript.remove();
   });
 
   it('runs all enhancers', () => {
@@ -503,6 +554,31 @@ describe('AkyosAccessibility', () => {
     expect(report.score).toBeGreaterThanOrEqual(0);
   });
 
+  it('does not inject ReadSpeaker script when readSpeaker is false', () => {
+    new AkyosAccessibility({ watch: false, logReport: false, readSpeaker: false });
+    expect(document.getElementById('akyos-readspeaker-script')).toBeNull();
+  });
+
+  it('injects ReadSpeaker script when readSpeaker has readerId', () => {
+    new AkyosAccessibility({
+      watch: false,
+      logReport: false,
+      readSpeaker: { readerId: 'test123' },
+    });
+    const script = document.getElementById('akyos-readspeaker-script');
+    expect(script).toBeTruthy();
+    expect(script.src).toContain('cdn1.readspeaker.com');
+    expect(script.src).toContain('test123');
+    expect(script.src).toContain('pLang=fr');
+  });
+
+  it('does not inject ReadSpeaker when readSpeaker is true without readerId', () => {
+    const warnSpy = jest.spyOn(console, 'warn').mockImplementation(() => {});
+    new AkyosAccessibility({ watch: false, logReport: false, readSpeaker: true });
+    expect(document.getElementById('akyos-readspeaker-script')).toBeNull();
+    warnSpy.mockRestore();
+  });
+
   it('renders accessibility toolbar when accessibilityToolbar is true', () => {
     new AkyosAccessibility({
       watch: false,
@@ -514,6 +590,27 @@ describe('AkyosAccessibility', () => {
     expect(document.getElementById('akyos-daltonization-filters')).toBeTruthy();
   });
 
+  it('renders Écouter button and reader section when speechSynthesis available', () => {
+    if (typeof window.speechSynthesis === 'undefined') return;
+    new AkyosAccessibility({
+      watch: false,
+      logReport: false,
+      accessibilityToolbar: true,
+    });
+    expect(document.querySelector('.akyos-a11y-read-btn-float')).toBeTruthy();
+    expect(document.querySelector('#akyos-a11y-read-btn')).toBeTruthy();
+    expect(document.querySelector('#akyos-a11y-highlight-bg')).toBeTruthy();
+  });
+
+  it('mode audit does not modify DOM', () => {
+    const a11y = new AkyosAccessibility({ mode: 'audit', watch: false, logReport: false });
+    expect(document.documentElement.getAttribute('lang')).toBeNull();
+    expect(document.getElementById('akyos-skip-link')).toBeFalsy();
+    const report = a11y.getReport();
+    expect(report.mode).toBe('audit');
+    expect(report.conformant).toBeDefined();
+  });
+
   it('getReportJSON returns serializable report without DOM refs', () => {
     const a11y = new AkyosAccessibility({ watch: false, logReport: false });
     const json = a11y.getReportJSON();
@@ -522,6 +619,7 @@ describe('AkyosAccessibility', () => {
     expect(str).not.toContain('[object');
     expect(json).toHaveProperty('enhancements');
     expect(json).toHaveProperty('suggestions');
+    expect(json).toHaveProperty('conformant');
     expect(json).toHaveProperty('score');
     expect(json).toHaveProperty('timestamp');
     const firstItem = json.enhancements[0] || json.suggestions[0];

@@ -4,6 +4,8 @@
  */
 
 import { getSelector } from './getSelector.js';
+import { getScoreLetter, getScoreExplanation } from './scoreUtils.js';
+import { getRgaaUrl } from './rgaa.js';
 
 const CATEGORY_LABELS = {
   Lang: 'Langue (attribut lang)',
@@ -64,22 +66,6 @@ function escapeHtml(str) {
   return div.innerHTML;
 }
 
-function getScoreLetter(score) {
-  if (score >= 90) return 'A';
-  if (score >= 80) return 'B';
-  if (score >= 70) return 'C';
-  if (score >= 50) return 'D';
-  return 'F';
-}
-
-function getScoreExplanation(score) {
-  if (score >= 90) return 'Excellente accessibilité. Peu ou pas de corrections à apporter.';
-  if (score >= 80) return 'Bonne accessibilité. Quelques améliorations mineures possibles.';
-  if (score >= 70) return 'Accessibilité correcte. Des corrections sont recommandées.';
-  if (score >= 50) return 'Accessibilité insuffisante. Des corrections importantes sont nécessaires.';
-  return 'Accessibilité critique. De nombreuses corrections sont requises.';
-}
-
 function groupBySource(items) {
   const groups = {};
   items.forEach((item) => {
@@ -96,7 +82,10 @@ function toSerializableItem(item) {
   const type = item.type || 'enhancement';
   const severity = item.severity || (type === 'suggestion' ? 'warning' : 'info');
   const selector = item.element ? getSelector(item.element) : null;
-  return { message: msg, source, type, severity, selector };
+  const fix = item.fix;
+  const description = item.description;
+  const rgaaRef = item.rgaaRef || item.rgaaCriterion;
+  return { message: msg, source, type, severity, selector, fix, description, rgaaRef };
 }
 
 /**
@@ -105,13 +94,21 @@ function toSerializableItem(item) {
  * @returns {string} HTML complet
  */
 export function generateReportHtml(report) {
-  const { enhancements = [], suggestions = [], score = 100, timestamp = '' } = report;
+  const { enhancements = [], suggestions = [], conformant = [], score = 100, scoreDetails = {}, mode = 'enhance', timestamp = '' } = report;
 
   const enhSerial = enhancements.map(toSerializableItem);
   const suggSerial = suggestions.map(toSerializableItem);
+  const confSerial = conformant.map(toSerializableItem);
 
   const letter = getScoreLetter(score);
   const scoreExplanation = getScoreExplanation(score);
+  const positiveCount = mode === 'audit' ? confSerial.length : enhSerial.length;
+  const total = scoreDetails.total ?? positiveCount + suggSerial.length;
+  const breakdownText = total > 0
+    ? (mode === 'audit'
+      ? `Taux de conformité : ${score}% — ${positiveCount} point(s) conforme(s) sur ${total} audité(s)`
+      : `Taux de conformité : ${score}% — ${positiveCount} point(s) traité(s) sur ${total}`)
+    : (mode === 'audit' ? 'Aucun point à auditer' : 'Aucun point à traiter');
   const dateStr = timestamp ? new Date(timestamp).toLocaleDateString('fr-FR', {
     day: 'numeric',
     month: 'long',
@@ -128,39 +125,59 @@ export function generateReportHtml(report) {
 
   const enhGroups = groupBySource(enhSerial);
   const suggGroups = groupBySource(suggSerial);
+  const confGroups = groupBySource(confSerial);
 
-  const allSources = [...new Set([...Object.keys(enhGroups), ...Object.keys(suggGroups)])];
+  const allSources = [...new Set([...Object.keys(enhGroups), ...Object.keys(suggGroups), ...Object.keys(confGroups)])];
 
   let sectionsHtml = '';
 
   allSources.forEach((source) => {
     const enhItems = enhGroups[source] || [];
     const suggItems = suggGroups[source] || [];
-    if (enhItems.length === 0 && suggItems.length === 0) return;
+    const confItems = confGroups[source] || [];
+    if (enhItems.length === 0 && suggItems.length === 0 && confItems.length === 0) return;
 
     const label = getCategoryLabel(source);
     const desc = getCategoryDescription(source);
 
     let itemsHtml = '';
 
+    const rgaaLinkHtml = (rgaaRef) => {
+      if (!rgaaRef) return '';
+      const url = getRgaaUrl(rgaaRef);
+      return ` <a href="${escapeHtml(url)}" target="_blank" rel="noopener noreferrer" class="item-rgaa" title="Voir le critère RGAA ${escapeHtml(rgaaRef)} sur le référentiel officiel">RGAA ${escapeHtml(rgaaRef)}</a>`;
+    };
+
+    confItems.forEach((item) => {
+      itemsHtml += `
+        <tr class="item-row item-row--conformant">
+          <td class="item-icon">✓</td>
+          <td class="item-severity">Conforme</td>
+          <td class="item-message">${escapeHtml(item.message)}${rgaaLinkHtml(item.rgaaRef)}</td>
+          ${item.selector ? `<td class="item-selector"><code>${escapeHtml(item.selector)}</code></td>` : '<td></td>'}
+        </tr>`;
+    });
+
     enhItems.forEach((item) => {
       const sevLabel = SEVERITY_LABELS[item.severity] || item.severity;
+      const descHtml = item.description ? `<div class="item-description">${escapeHtml(item.description)}</div>` : '';
       itemsHtml += `
         <tr class="item-row item-row--enhancement">
           <td class="item-icon">✓</td>
           <td class="item-severity item-severity--${escapeHtml(item.severity)}">${escapeHtml(sevLabel)}</td>
-          <td class="item-message">${escapeHtml(item.message)}</td>
+          <td class="item-message">${escapeHtml(item.message)}${descHtml}${rgaaLinkHtml(item.rgaaRef)}</td>
           ${item.selector ? `<td class="item-selector"><code>${escapeHtml(item.selector)}</code></td>` : '<td></td>'}
         </tr>`;
     });
 
     suggItems.forEach((item) => {
       const sevLabel = SEVERITY_LABELS[item.severity] || item.severity;
+      const fixHtml = item.fix ? `<div class="item-fix">${escapeHtml(item.fix)}</div>` : '';
       itemsHtml += `
         <tr class="item-row item-row--suggestion">
           <td class="item-icon">⚠</td>
           <td class="item-severity item-severity--${escapeHtml(item.severity)}">${escapeHtml(sevLabel)}</td>
-          <td class="item-message">${escapeHtml(item.message)}</td>
+          <td class="item-message">${escapeHtml(item.message)}${fixHtml}${rgaaLinkHtml(item.rgaaRef)}</td>
           ${item.selector ? `<td class="item-selector"><code>${escapeHtml(item.selector)}</code></td>` : '<td></td>'}
         </tr>`;
     });
@@ -188,7 +205,7 @@ export function generateReportHtml(report) {
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Rapport d'accessibilité — Akyos Accessibility</title>
+  <title>${mode === 'audit' ? 'Audit' : 'Rapport'} d'accessibilité — Akyos Accessibility</title>
   <style>
     * { box-sizing: border-box; }
     body {
@@ -238,10 +255,16 @@ export function generateReportHtml(report) {
       font-weight: 600;
       color: #0e7490;
     }
+    .score-details { flex: 1; }
     .score-explanation {
-      flex: 1;
+      margin: 0 0 0.25rem;
       color: #3f3f46;
       font-size: 0.95rem;
+    }
+    .score-breakdown {
+      margin: 0;
+      font-size: 0.85rem;
+      color: #71717a;
     }
     .summary {
       display: flex;
@@ -294,6 +317,7 @@ export function generateReportHtml(report) {
     }
     .item-row--enhancement .item-icon { color: #16a34a; }
     .item-row--suggestion .item-icon { color: #d97706; }
+    .item-row--conformant .item-icon { color: #16a34a; }
     .item-severity {
       font-size: 0.75rem;
       font-weight: 600;
@@ -303,6 +327,26 @@ export function generateReportHtml(report) {
     .item-severity--warning { color: #d97706; }
     .item-severity--info { color: #64748b; }
     .item-message { color: #1a1a1a; }
+    .item-rgaa { font-size: 0.7em; opacity: 0.7; color: #71717a; text-decoration: none; }
+    .item-rgaa:hover { text-decoration: underline; }
+    .item-description {
+      margin-top: 0.35rem;
+      margin-left: 0;
+      padding: 0.35rem 0.5rem;
+      font-size: 0.8rem;
+      color: #52525b;
+      background: #ecfdf5;
+      border-left: 3px solid #22c55e;
+    }
+    .item-fix {
+      margin-top: 0.35rem;
+      padding: 0.35rem 0.5rem;
+      font-size: 0.8rem;
+      color: #52525b;
+      background: #f4f4f5;
+      border-left: 3px solid #0891b2;
+      border-radius: 0 4px 4px 0;
+    }
     .item-selector code {
       font-size: 0.8rem;
       padding: 0.15rem 0.35rem;
@@ -333,24 +377,27 @@ export function generateReportHtml(report) {
   <button type="button" class="print-btn no-print" onclick="window.print()">Enregistrer en PDF</button>
 
   <header class="header">
-    <h1>Rapport d'accessibilité</h1>
+    <h1>${mode === 'audit' ? 'Audit' : 'Rapport'} d'accessibilité</h1>
     <p class="meta">Généré le ${escapeHtml(dateStr)} — Akyos Accessibility</p>
     <div class="score-block">
       <div>
-        <span class="score-value">${score}/100</span>
+        <span class="score-value">${score}%</span>
         <span class="score-letter">(${letter})</span>
       </div>
-      <p class="score-explanation">${escapeHtml(scoreExplanation)}</p>
+      <div class="score-details">
+        <p class="score-explanation">${escapeHtml(scoreExplanation)}</p>
+        <p class="score-breakdown">${escapeHtml(breakdownText)}</p>
+      </div>
     </div>
     <div class="summary">
-      <span class="summary--enhancement">✓ ${enhSerial.length} amélioration(s) appliquée(s)</span>
-      <span class="summary--suggestion">⚠ ${suggSerial.length} suggestion(s) à corriger</span>
+      <span class="summary--enhancement">✓ ${positiveCount} point(s) conforme(s)</span>
+      <span class="summary--suggestion">⚠ ${suggSerial.length} à corriger</span>
     </div>
   </header>
 
   <div class="intro">
     <strong>À propos de ce rapport</strong><br>
-    Les <strong>améliorations</strong> (✓) ont été appliquées automatiquement par la librairie. Les <strong>suggestions</strong> (⚠) nécessitent une correction manuelle. La colonne <strong>Sévérité</strong> indique la priorité : Erreur (bloquant), Avertissement (recommandé), Info (informatif).
+    ${mode === 'audit' ? 'Mode audit : <strong>aucune modification</strong> n\'a été appliquée. Les points <strong>conformes</strong> (✓) sont déjà en place. Les <strong>suggestions</strong> (⚠) nécessitent une correction manuelle.' : 'Les <strong>améliorations</strong> (✓) ont été appliquées automatiquement par la librairie. Les <strong>suggestions</strong> (⚠) nécessitent une correction manuelle.'} La colonne <strong>Sévérité</strong> indique la priorité : Erreur (bloquant), Avertissement (recommandé), Info (informatif).
   </div>
 
   ${sectionsHtml}

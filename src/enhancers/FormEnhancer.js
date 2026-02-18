@@ -26,9 +26,11 @@ const ERROR_CLASS_PATTERNS = [
 export class FormEnhancer extends BaseEnhancer {
   run() {
     const items = [];
-    this.associateLabels(items);
-    this.addAriaRequired(items);
-    this.addAriaInvalid(items);
+    if (!this.options.auditOnly) {
+      this.associateLabels(items);
+      this.addAriaRequired(items);
+      this.addAriaInvalid(items);
+    }
     this.auditUnlabeledFields(items);
     this.auditFieldsetLegend(items);
     this.auditAutocomplete(items);
@@ -63,8 +65,10 @@ export class FormEnhancer extends BaseEnhancer {
         const labelText = label.textContent?.trim().substring(0, 30) || 'Champ';
         items.push({
           message: `Label associé : ${labelText}${(label.textContent?.trim().length || 0) > 30 ? '…' : ''}`,
+          description: 'Le label a été associé au champ via les attributs for et id pour que les lecteurs d\'écran annoncent correctement le champ.',
           element: control,
           type: 'enhancement',
+          rgaaRef: '11.1',
         });
       }
     });
@@ -115,8 +119,10 @@ export class FormEnhancer extends BaseEnhancer {
       const name = control.name || control.placeholder || control.id || 'Champ';
       items.push({
         message: `aria-required ajouté : ${String(name).substring(0, 25)}`,
+        description: 'L\'attribut aria-required="true" a été ajouté pour signaler aux lecteurs d\'écran que le champ est obligatoire.',
         element: control,
         type: 'enhancement',
+        rgaaRef: '11.5',
       });
     });
   }
@@ -136,8 +142,10 @@ export class FormEnhancer extends BaseEnhancer {
         const name = control.name || control.placeholder || control.id || 'Champ';
         items.push({
           message: `aria-invalid ajouté (erreur détectée) : ${String(name).substring(0, 25)}`,
+          description: 'L\'attribut aria-invalid="true" a été ajouté car une classe d\'erreur a été détectée sur le champ ou son conteneur.',
           element: control,
           type: 'enhancement',
+          rgaaRef: '11.10',
         });
       } else if (!hasError && currentInvalid === 'true') {
         control.removeAttribute('aria-invalid');
@@ -161,9 +169,11 @@ export class FormEnhancer extends BaseEnhancer {
         const name = control.name || control.placeholder || control.id || 'Champ';
         items.push({
           message: `Champ sans étiquette : ${String(name).substring(0, 25)}`,
+          fix: 'Associez un <label for="id-du-champ"> ou ajoutez aria-label="Description" sur le champ.',
           element: control,
           type: 'suggestion',
           severity: 'error',
+          rgaaRef: '11.1',
         });
       }
     });
@@ -195,9 +205,11 @@ export class FormEnhancer extends BaseEnhancer {
       if (!hasLegend && !hasAriaLabel && !hasAriaLabelledby) {
         items.push({
           message: `Groupe de boutons radio sans légende (fieldset/legend ou aria-label)`,
+          fix: 'Entourez le groupe avec <fieldset><legend>Question</legend>...</fieldset> ou ajoutez aria-label sur un conteneur role="group".',
           element: first,
           type: 'suggestion',
           severity: 'warning',
+          rgaaRef: '11.6',
         });
         processed.add(name);
       }
@@ -219,19 +231,45 @@ export class FormEnhancer extends BaseEnhancer {
       const name = (input.getAttribute('name') || '').toLowerCase();
 
       if (type === 'email' || name.includes('email')) {
-        items.push({
-          message: 'Champ email sans attribut autocomplete',
-          element: input,
-          type: 'suggestion',
-          severity: 'info',
-        });
+        if (this.options.auditOnly) {
+          items.push({
+            message: 'Champ email sans attribut autocomplete',
+            fix: 'Ajoutez autocomplete="email" : <input type="email" autocomplete="email">',
+            element: input,
+            type: 'suggestion',
+            severity: 'info',
+            rgaaRef: '11.10',
+          });
+        } else {
+          input.setAttribute('autocomplete', 'email');
+          items.push({
+            message: 'autocomplete="email" ajouté',
+            description: 'L\'attribut autocomplete facilite la saisie et améliore l\'accessibilité pour les utilisateurs qui utilisent des gestionnaires de formulaires.',
+            element: input,
+            type: 'enhancement',
+            rgaaRef: '11.10',
+          });
+        }
       } else if (type === 'tel' || name.includes('tel')) {
-        items.push({
-          message: 'Champ téléphone sans attribut autocomplete',
-          element: input,
-          type: 'suggestion',
-          severity: 'info',
-        });
+        if (this.options.auditOnly) {
+          items.push({
+            message: 'Champ téléphone sans attribut autocomplete',
+            fix: 'Ajoutez autocomplete="tel" : <input type="tel" autocomplete="tel">',
+            element: input,
+            type: 'suggestion',
+            severity: 'info',
+            rgaaRef: '11.10',
+          });
+        } else {
+          input.setAttribute('autocomplete', 'tel');
+          items.push({
+            message: 'autocomplete="tel" ajouté',
+            description: 'L\'attribut autocomplete facilite la saisie et améliore l\'accessibilité pour les utilisateurs qui utilisent des gestionnaires de formulaires.',
+            element: input,
+            type: 'enhancement',
+            rgaaRef: '11.10',
+          });
+        }
       }
     });
   }
@@ -244,9 +282,11 @@ export class FormEnhancer extends BaseEnhancer {
       if (!og.getAttribute('label') || og.getAttribute('label').trim() === '') {
         items.push({
           message: 'Élément optgroup sans attribut label',
+          fix: 'Ajoutez label="Nom du groupe" sur <optgroup> : <optgroup label="Catégorie">',
           element: og,
           type: 'suggestion',
           severity: 'warning',
+          rgaaRef: '11.6',
         });
       }
     });

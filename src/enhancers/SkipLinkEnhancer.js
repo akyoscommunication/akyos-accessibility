@@ -10,7 +10,22 @@ const MAIN_ID = 'main-content';
  */
 export class SkipLinkEnhancer extends BaseEnhancer {
   run() {
-    if (document.getElementById(SKIP_LINK_ID)) return [];
+    const existing = document.getElementById(SKIP_LINK_ID);
+    const skipLink = existing || document.querySelector('body > a[href^="#"]');
+    if (this.options.auditOnly) {
+      if (skipLink) {
+        return [{ message: 'Lien d\'évitement présent', element: skipLink, type: 'conformant' }];
+      }
+      return [{
+        message: 'Lien d\'évitement manquant',
+        fix: 'Ajoutez un lien "Aller au contenu principal" en début de page pointant vers la zone main.',
+        element: document.body,
+        type: 'suggestion',
+        severity: 'warning',
+        rgaaRef: '12.6',
+      }];
+    }
+    if (existing) return [];
 
     const main = document.querySelector('main, [role="main"], #main');
     const targetId = main?.id || MAIN_ID;
@@ -44,8 +59,10 @@ export class SkipLinkEnhancer extends BaseEnhancer {
     return [
       {
         message: 'Skip link "Aller au contenu principal" injecté en début de page',
+        description: 'Un lien d\'évitement permet aux utilisateurs au clavier de sauter directement au contenu principal sans parcourir tous les éléments de navigation.',
         element: link,
         type: 'enhancement',
+        rgaaRef: '12.6',
       },
     ];
   }

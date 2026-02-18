@@ -1,7 +1,8 @@
 import { exportReportToPdf } from './utils/pdfExport.js';
+import { getScoreLetter } from './utils/scoreUtils.js';
+import { getRgaaUrl } from './utils/rgaa.js';
 
 const HIGHLIGHT_DURATION = 2500;
-const COLLAPSE_THRESHOLD = 5;
 
 const CATEGORY_ORDER = [
   'Lang',
@@ -14,6 +15,11 @@ const CATEGORY_ORDER = [
   'Images (audit)',
   'Titres (audit)',
   'Vidéos (audit)',
+  'Cadres (audit)',
+  'Tableaux (audit)',
+  'Document (audit)',
+  'Contraste (audit)',
+  'Focus (audit)',
   'Autre',
 ];
 
@@ -28,6 +34,11 @@ const CATEGORY_LABELS = {
   'Images (audit)': 'Images sans alt',
   'Titres (audit)': 'Hiérarchie des titres',
   'Vidéos (audit)': 'Vidéos sans sous-titres',
+  'Cadres (audit)': 'Cadres sans titre',
+  'Tableaux (audit)': 'Tableaux',
+  'Document (audit)': 'Document',
+  'Contraste (audit)': 'Contraste',
+  'Focus (audit)': 'Focus visible',
   Autre: 'Autre',
 };
 
@@ -45,9 +56,12 @@ function groupBySource(items) {
   return groups;
 }
 
-function getSortedGroups(enhGroups, suggGroups) {
+function getSortedGroups(enhGroups, suggGroups, confGroups = {}) {
   const all = [];
   CATEGORY_ORDER.forEach((source) => {
+    if (confGroups[source]) {
+      all.push({ source, items: confGroups[source], type: 'conformant', icon: '✓' });
+    }
     if (enhGroups[source]) {
       all.push({ source, items: enhGroups[source], type: 'enhancement', icon: '✓' });
     }
@@ -55,15 +69,14 @@ function getSortedGroups(enhGroups, suggGroups) {
       all.push({ source, items: suggGroups[source], type: 'suggestion', icon: '⚠' });
     }
   });
-  Object.keys(enhGroups).forEach((source) => {
-    if (!CATEGORY_ORDER.includes(source)) {
-      all.push({ source, items: enhGroups[source], type: 'enhancement', icon: '✓' });
-    }
-  });
-  Object.keys(suggGroups).forEach((source) => {
-    if (!CATEGORY_ORDER.includes(source)) {
-      all.push({ source, items: suggGroups[source], type: 'suggestion', icon: '⚠' });
-    }
+  [confGroups, enhGroups, suggGroups].forEach((groups, i) => {
+    const type = i === 0 ? 'conformant' : i === 1 ? 'enhancement' : 'suggestion';
+    const icon = type === 'suggestion' ? '⚠' : '✓';
+    Object.keys(groups).forEach((source) => {
+      if (!CATEGORY_ORDER.includes(source)) {
+        all.push({ source, items: groups[source], type, icon });
+      }
+    });
   });
   return all;
 }
@@ -89,59 +102,159 @@ export function render(report) {
   document.body.appendChild(panel);
 }
 
-function getScoreLetter(score) {
-  if (score >= 90) return 'A';
-  if (score >= 80) return 'B';
-  if (score >= 70) return 'C';
-  if (score >= 50) return 'D';
-  return 'F';
-}
-
 function createBadge(score) {
   const letter = getScoreLetter(score);
   const badge = document.createElement('button');
   badge.type = 'button';
   badge.className = 'akyos-report-badge';
-  badge.setAttribute('aria-label', `Rapport accessibilité : ${score}/100 (${letter}). Cliquer pour ouvrir.`);
+  badge.setAttribute('aria-label', `Rapport accessibilité : ${score}% (${letter}). Cliquer pour ouvrir.`);
   badge.innerHTML = `
-    <span class="akyos-report-badge__score">${score}</span>
+    <span class="akyos-report-badge__score">${score}%</span>
     <span class="akyos-report-badge__letter">${letter}</span>
   `;
   return badge;
 }
 
 function createPanel(report) {
-  const { enhancements = [], suggestions = [], score = 100 } = report;
+  const { enhancements = [], suggestions = [], conformant = [], score = 100, scoreDetails = {}, mode = 'enhance' } = report;
   const letter = getScoreLetter(score);
   const panel = document.createElement('div');
   panel.className = 'akyos-report-panel';
 
   const enhGroups = groupBySource(enhancements);
   const suggGroups = groupBySource(suggestions);
-  const sortedGroups = getSortedGroups(enhGroups, suggGroups);
+  const confGroups = groupBySource(conformant);
+  const sortedGroups = getSortedGroups(enhGroups, suggGroups, confGroups);
+
+  const positiveCount = mode === 'audit' ? conformant.length : enhancements.length;
+  const total = scoreDetails.total ?? positiveCount + suggestions.length;
+  const breakdownText = total > 0
+    ? `Taux de conformité : ${score}% (${positiveCount}/${total} ${mode === 'audit' ? 'points audités' : 'points traités'})`
+    : (mode === 'audit' ? 'Aucun point à auditer' : 'Aucun point à traiter');
+
+  const firstTabLabel = mode === 'audit' ? 'Conformes' : 'Améliorations';
+  const firstTabCount = mode === 'audit' ? conformant.length : enhancements.length;
+  const firstTabId = mode === 'audit' ? 'akyos-tab-conformant' : 'akyos-tab-enhancements';
 
   panel.innerHTML = `
     <div class="akyos-report-panel__header">
-      <h2 class="akyos-report-panel__title">Rapport accessibilité</h2>
+      <h2 class="akyos-report-panel__title">${mode === 'audit' ? 'Audit accessibilité' : 'Rapport accessibilité'}</h2>
       <div class="akyos-report-score">
-        <span class="akyos-report-score__value">${score}/100</span>
+        <span class="akyos-report-score__value">${score}%</span>
         <span class="akyos-report-score__letter">${letter}</span>
       </div>
+      <p class="akyos-report-breakdown">${breakdownText}</p>
       <div class="akyos-report-summary">
-        <span class="akyos-report-summary__item akyos-report-summary__item--enhancement">✓ ${enhancements.length}</span>
+        <span class="akyos-report-summary__item akyos-report-summary__item--enhancement">✓ ${firstTabCount}</span>
         <span class="akyos-report-summary__item akyos-report-summary__item--suggestion">⚠ ${suggestions.length}</span>
       </div>
       <div class="akyos-report-header-actions">
         <button type="button" class="akyos-report-pdf-btn" title="Exporter en PDF" aria-label="Exporter le rapport en PDF">PDF</button>
-        <button type="button" class="akyos-report-expand-all" title="Tout ouvrir / fermer" aria-label="Tout ouvrir ou fermer">⋯</button>
       </div>
     </div>
-    <div class="akyos-report-panel__body"></div>
+    <div class="akyos-report-tabs" role="tablist" aria-label="Sections du rapport">
+      <button type="button" class="akyos-report-tab akyos-report-tab--active" role="tab" aria-selected="true" aria-controls="${firstTabId}" id="akyos-tab-btn-first" data-tab="first">
+        ✓ ${firstTabLabel} <span class="akyos-report-tab__count">${firstTabCount}</span>
+      </button>
+      <button type="button" class="akyos-report-tab" role="tab" aria-selected="false" aria-controls="akyos-tab-suggestions" id="akyos-tab-btn-suggestions" data-tab="suggestions">
+        ⚠ À corriger <span class="akyos-report-tab__count">${suggestions.length}</span>
+      </button>
+      <button type="button" class="akyos-report-tab" role="tab" aria-selected="false" aria-controls="akyos-tab-audit" id="akyos-tab-btn-audit" data-tab="audit">
+        ${mode === 'audit' ? 'Audit complet' : 'Vue d\'ensemble'} <span class="akyos-report-tab__count">${enhancements.length + suggestions.length + conformant.length}</span>
+      </button>
+    </div>
+    <div id="${firstTabId}" class="akyos-report-tabpanel" role="tabpanel" aria-labelledby="akyos-tab-btn-first">
+      <div class="akyos-report-tabpanel__body"></div>
+    </div>
+    <div id="akyos-tab-suggestions" class="akyos-report-tabpanel akyos-report-tabpanel--hidden" role="tabpanel" aria-labelledby="akyos-tab-btn-suggestions" hidden>
+      <div class="akyos-report-tabpanel__body"></div>
+    </div>
+    <div id="akyos-tab-audit" class="akyos-report-tabpanel akyos-report-tabpanel--hidden" role="tabpanel" aria-labelledby="akyos-tab-btn-audit" hidden>
+      <div class="akyos-report-tabpanel__body"></div>
+    </div>
   `;
 
-  const body = panel.querySelector('.akyos-report-panel__body');
-  sortedGroups.forEach(({ source, items, type, icon }) => {
-    body.appendChild(createCollapsibleGroup(source, items, type, icon));
+  const enhGroupsOnly = [];
+  CATEGORY_ORDER.forEach((source) => {
+    if (enhGroups[source]?.length) {
+      enhGroupsOnly.push({ source, items: enhGroups[source], type: 'enhancement', icon: '✓' });
+    }
+  });
+  Object.keys(enhGroups).forEach((source) => {
+    if (!CATEGORY_ORDER.includes(source) && enhGroups[source]?.length) {
+      enhGroupsOnly.push({ source, items: enhGroups[source], type: 'enhancement', icon: '✓' });
+    }
+  });
+  const confGroupsOnly = [];
+  CATEGORY_ORDER.forEach((source) => {
+    if (confGroups[source]?.length) {
+      confGroupsOnly.push({ source, items: confGroups[source], type: 'conformant', icon: '✓' });
+    }
+  });
+  Object.keys(confGroups).forEach((source) => {
+    if (!CATEGORY_ORDER.includes(source) && confGroups[source]?.length) {
+      confGroupsOnly.push({ source, items: confGroups[source], type: 'conformant', icon: '✓' });
+    }
+  });
+  const suggGroupsOnly = [];
+  CATEGORY_ORDER.forEach((source) => {
+    if (suggGroups[source]?.length) {
+      suggGroupsOnly.push({ source, items: suggGroups[source], type: 'suggestion', icon: '⚠' });
+    }
+  });
+  Object.keys(suggGroups).forEach((source) => {
+    if (!CATEGORY_ORDER.includes(source) && suggGroups[source]?.length) {
+      suggGroupsOnly.push({ source, items: suggGroups[source], type: 'suggestion', icon: '⚠' });
+    }
+  });
+
+  const tabFirst = panel.querySelector(`#${firstTabId} .akyos-report-tabpanel__body`);
+  const tabSuggestions = panel.querySelector('#akyos-tab-suggestions .akyos-report-tabpanel__body');
+  const tabAudit = panel.querySelector('#akyos-tab-audit .akyos-report-tabpanel__body');
+
+  const firstTabGroups = mode === 'audit' ? confGroupsOnly : enhGroupsOnly;
+  const firstTabEmptyMsg = mode === 'audit'
+    ? 'Aucun point conforme détecté.'
+    : 'Aucune amélioration appliquée automatiquement.';
+  if (firstTabGroups.length === 0) {
+    tabFirst.innerHTML = `<p class="akyos-report-empty">${firstTabEmptyMsg}</p>`;
+  } else {
+    firstTabGroups.forEach(({ source, items, type, icon }) => {
+      tabFirst.appendChild(createCollapsibleGroup(source, items, type, icon));
+    });
+  }
+  if (suggGroupsOnly.length === 0) {
+    tabSuggestions.innerHTML = '<p class="akyos-report-empty">Aucun point à corriger manuellement.</p>';
+  } else {
+    suggGroupsOnly.forEach(({ source, items, type, icon }) => {
+      tabSuggestions.appendChild(createCollapsibleGroup(source, items, type, icon));
+    });
+  }
+  if (sortedGroups.length === 0) {
+    tabAudit.innerHTML = `<p class="akyos-report-empty">${mode === 'audit' ? 'Aucun élément audité.' : 'Aucun élément traité.'}</p>`;
+  } else {
+    sortedGroups.forEach(({ source, items, type, icon }) => {
+      tabAudit.appendChild(createCollapsibleGroup(source, items, type, icon));
+    });
+  }
+
+  const tabs = panel.querySelectorAll('.akyos-report-tab');
+  const tabpanels = panel.querySelectorAll('.akyos-report-tabpanel');
+  tabs.forEach((tab) => {
+    tab.addEventListener('click', () => {
+      const targetId = tab.getAttribute('aria-controls');
+      tabs.forEach((t) => {
+        t.classList.remove('akyos-report-tab--active');
+        t.setAttribute('aria-selected', 'false');
+      });
+      tab.classList.add('akyos-report-tab--active');
+      tab.setAttribute('aria-selected', 'true');
+      tabpanels.forEach((p) => {
+        const isActive = p.id === targetId;
+        p.classList.toggle('akyos-report-tabpanel--hidden', !isActive);
+        p.hidden = !isActive;
+      });
+    });
   });
 
   const pdfBtn = panel.querySelector('.akyos-report-pdf-btn');
@@ -149,29 +262,15 @@ function createPanel(report) {
     exportReportToPdf(report);
   });
 
-  const expandBtn = panel.querySelector('.akyos-report-expand-all');
-  expandBtn.addEventListener('click', () => {
-    const groups = body.querySelectorAll('.akyos-report-group');
-    const allOpen = Array.from(groups).every((g) => g.classList.contains('akyos-report-group--open'));
-    groups.forEach((g) => {
-      const groupBody = g.querySelector('.akyos-report-group__body');
-      const header = g.querySelector('.akyos-report-group__header');
-      groupBody.hidden = allOpen;
-      header.setAttribute('aria-expanded', !allOpen);
-      g.classList.toggle('akyos-report-group--open', !allOpen);
-    });
-  });
-
   return panel;
 }
 
 function createCollapsibleGroup(source, items, type, icon) {
-  const defaultOpen = items.length <= COLLAPSE_THRESHOLD;
   const group = document.createElement('div');
   group.className = `akyos-report-group akyos-report-group--${type}`;
   const label = getCategoryLabel(source);
   group.innerHTML = `
-    <button type="button" class="akyos-report-group__header" aria-expanded="${defaultOpen}">
+    <button type="button" class="akyos-report-group__header" aria-expanded="false">
       <div class="akyos-report-group__header-row">
         <span class="akyos-report-group__icon">${icon}</span>
         <span class="akyos-report-group__count">${items.length}</span>
@@ -179,7 +278,7 @@ function createCollapsibleGroup(source, items, type, icon) {
       </div>
       <span class="akyos-report-group__title">${escapeHtml(label)}</span>
     </button>
-    <div class="akyos-report-group__body" ${defaultOpen ? '' : 'hidden'}>
+    <div class="akyos-report-group__body" hidden>
       <ul class="akyos-report-list"></ul>
     </div>
   `;
@@ -202,8 +301,6 @@ function createCollapsibleGroup(source, items, type, icon) {
     header.setAttribute('aria-expanded', !isOpen);
     group.classList.toggle('akyos-report-group--open', !isOpen);
   });
-  if (defaultOpen) group.classList.add('akyos-report-group--open');
-
   return group;
 }
 
@@ -214,14 +311,29 @@ function createReportItem(item, type, icon) {
   const severity = item.severity || (type === 'suggestion' ? 'warning' : 'info');
   li.className = `akyos-report-item akyos-report-item--${type} akyos-report-item--${severity}`;
   const msg = normalizeMessage(item);
+  const fix = item.fix;
+  const description = item.description;
+  const rgaaRef = item.rgaaRef || item.rgaaCriterion;
   const disabled = !item.element ? ' disabled' : '';
   const severityBadge = severity !== 'info' ? `<span class="akyos-report-item__severity" title="${SEVERITY_LABELS[severity] || severity}">${severity}</span>` : '';
+  let fixBlock = '';
+  if (fix && type === 'suggestion') {
+    fixBlock = `<p class="akyos-report-item__fix">${escapeHtml(fix)}</p>`;
+  }
+  if (description && type === 'enhancement') {
+    fixBlock += `<p class="akyos-report-item__description">${escapeHtml(description)}</p>`;
+  }
+  if (rgaaRef) {
+    const rgaaUrl = getRgaaUrl(rgaaRef);
+    fixBlock += `<span class="akyos-report-item__rgaa" title="Voir le critère RGAA ${escapeHtml(rgaaRef)} sur le référentiel officiel"><a href="${escapeHtml(rgaaUrl)}" target="_blank" rel="noopener noreferrer">RGAA ${escapeHtml(rgaaRef)}</a></span>`;
+  }
   li.innerHTML = `
     <button type="button" class="akyos-report-item__btn"${disabled}>
       <span class="akyos-report-item__icon">${icon}</span>
       ${severityBadge}
       <span class="akyos-report-item__text">${escapeHtml(msg)}</span>
     </button>
+    ${fixBlock}
   `;
   return li;
 }
@@ -405,6 +517,11 @@ function injectStyles() {
       font-weight: 600;
       color: #67e8f9;
     }
+    .akyos-report-breakdown {
+      margin: 0.25rem 0 0.5rem;
+      font-size: 0.8rem;
+      color: #94a3b8;
+    }
     .akyos-report-summary {
       display: flex;
       gap: 1rem;
@@ -437,25 +554,67 @@ function injectStyles() {
       background: rgba(34, 211, 238, 0.25);
       color: #67e8f9;
     }
-    .akyos-report-expand-all {
-      padding: 0.35rem 0.5rem;
-      font-size: 1rem;
+    .akyos-report-tabs {
+      display: flex;
+      flex-shrink: 0;
+      gap: 0;
+      padding: 0 1rem;
+      border-bottom: 1px solid #27272a;
+      background: #0a0a0b;
+    }
+    .akyos-report-tab {
+      flex: 1;
+      min-width: 0;
+      padding: 0.6rem 0.5rem;
+      font-size: 0.75rem;
+      font-weight: 500;
       color: #71717a;
       background: transparent;
       border: none;
+      border-bottom: 2px solid transparent;
       cursor: pointer;
-      border-radius: 4px;
-      transition: color 0.15s, background 0.15s;
+      transition: color 0.15s, background 0.15s, border-color 0.15s;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 0.35rem;
     }
-    .akyos-report-expand-all:hover {
+    .akyos-report-tab:hover {
+      color: #a1a1aa;
+      background: rgba(34, 211, 238, 0.05);
+    }
+    .akyos-report-tab--active {
       color: #22d3ee;
-      background: rgba(34, 211, 238, 0.1);
+      border-bottom-color: #22d3ee;
     }
-    .akyos-report-panel__body {
+    .akyos-report-tab__count {
+      font-size: 0.7rem;
+      padding: 0.1rem 0.35rem;
+      background: #27272a;
+      border-radius: 4px;
+      color: #a1a1aa;
+    }
+    .akyos-report-tab--active .akyos-report-tab__count {
+      background: rgba(34, 211, 238, 0.2);
+      color: #67e8f9;
+    }
+    .akyos-report-tabpanel {
       flex: 1;
       min-height: 0;
       overflow-y: auto;
+    }
+    .akyos-report-tabpanel--hidden {
+      display: none;
+    }
+    .akyos-report-tabpanel__body {
       padding: 0.75rem 1rem;
+    }
+    .akyos-report-empty {
+      margin: 0;
+      padding: 1.5rem 0;
+      font-size: 0.85rem;
+      color: #71717a;
+      text-align: center;
     }
     .akyos-report-group {
       margin-bottom: 0.5rem;
@@ -496,7 +655,8 @@ function injectStyles() {
       flex-shrink: 0;
       font-size: 0.9rem;
     }
-    .akyos-report-group--enhancement .akyos-report-group__icon { color: #22c55e; }
+    .akyos-report-group--enhancement .akyos-report-group__icon,
+    .akyos-report-group--conformant .akyos-report-group__icon { color: #22c55e; }
     .akyos-report-group--suggestion .akyos-report-group__icon { color: #f59e0b; }
     .akyos-report-group__title {
       display: block;
@@ -572,7 +732,8 @@ function injectStyles() {
       flex-shrink: 0;
       font-size: 0.9rem;
     }
-    .akyos-report-item--enhancement .akyos-report-item__icon {
+    .akyos-report-item--enhancement .akyos-report-item__icon,
+    .akyos-report-item--conformant .akyos-report-item__icon {
       color: #22c55e;
     }
     .akyos-report-item--suggestion .akyos-report-item__icon {
@@ -599,6 +760,41 @@ function injectStyles() {
       min-width: 0;
       line-height: 1.4;
       overflow: visible;
+      word-break: break-word;
+    }
+    .akyos-report-item__description {
+      display: block;
+      margin: 0.35rem 0 0 0;
+      padding: 0.4rem 0.5rem;
+      font-size: 0.8rem;
+      color: #a1a1aa;
+      background: rgba(34, 197, 94, 0.1);
+      border-left: 3px solid #22c55e;
+      border-radius: 0 4px 4px 0;
+    }
+    .akyos-report-item__rgaa {
+      display: block;
+      font-size: 0.65rem;
+      opacity: 0.7;
+      margin-top: 0.25rem;
+    }
+    .akyos-report-item__rgaa a {
+      color: #71717a;
+      text-decoration: none;
+    }
+    .akyos-report-item__rgaa a:hover {
+      color: #a1a1aa;
+      text-decoration: underline;
+    }
+    .akyos-report-item__fix {
+      margin: 0.35rem 0 0 0;
+      padding: 0.4rem 0.5rem;
+      font-size: 0.75rem;
+      line-height: 1.4;
+      color: #94a3b8;
+      background: rgba(34, 211, 238, 0.08);
+      border-left: 3px solid #22d3ee;
+      border-radius: 0 4px 4px 0;
       word-break: break-word;
     }
     .akyos-highlight-tooltip {

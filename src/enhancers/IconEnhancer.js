@@ -18,12 +18,26 @@ export class IconEnhancer extends BaseEnhancer {
         if (svg.getAttribute('role') === 'img' && svg.getAttribute('aria-label')) return;
         if (svg.getAttribute('aria-labelledby')) return;
 
+        if (this.options.auditOnly) {
+          const parentTag = container.tagName.toLowerCase();
+          items.push({
+            message: `Icône décorative sans aria-hidden dans <${parentTag}>`,
+            fix: 'Ajoutez aria-hidden="true" sur le SVG décoratif.',
+            element: svg,
+            type: 'suggestion',
+            severity: 'info',
+            rgaaRef: '1.2',
+          });
+          return;
+        }
         svg.setAttribute('aria-hidden', 'true');
         const parentTag = container.tagName.toLowerCase();
         items.push({
           message: `aria-hidden="true" ajouté sur icône décorative dans <${parentTag}>`,
+          description: 'aria-hidden="true" masque l\'icône aux lecteurs d\'écran car le texte du bouton/lien suffit.',
           element: svg,
           type: 'enhancement',
+          rgaaRef: '1.2',
         });
       });
     });
@@ -38,12 +52,25 @@ export class IconEnhancer extends BaseEnhancer {
       if (svg.closest('svg')) return;
 
       if (this.looksDecorative(svg)) {
-        svg.setAttribute('aria-hidden', 'true');
-        items.push({
-          message: 'aria-hidden="true" ajouté sur SVG décoratif isolé',
-          element: svg,
-          type: 'enhancement',
-        });
+        if (this.options.auditOnly) {
+          items.push({
+            message: 'SVG décoratif isolé sans aria-hidden',
+            fix: 'Ajoutez aria-hidden="true" sur le SVG décoratif.',
+            element: svg,
+            type: 'suggestion',
+            severity: 'info',
+            rgaaRef: '1.2',
+          });
+        } else {
+          svg.setAttribute('aria-hidden', 'true');
+          items.push({
+            message: 'aria-hidden="true" ajouté sur SVG décoratif isolé',
+            description: 'aria-hidden="true" masque le SVG décoratif aux lecteurs d\'écran.',
+            element: svg,
+            type: 'enhancement',
+            rgaaRef: '1.2',
+          });
+        }
       }
     });
 

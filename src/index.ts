@@ -16,5 +16,7 @@ export { ContrastEnhancer } from './enhancers/ContrastEnhancer.js';
 export { FocusEnhancer } from './enhancers/FocusEnhancer.js';
 export { render as renderVisualReport } from './VisualReport.js';
 export { renderAccessibilityPanel } from './AccessibilityPanel.js';
+export { loadReadSpeaker } from './ReadSpeakerLoader.js';
+export { readPage, isPageReaderAvailable } from './PageReader.js';
 export { BaseEnhancer } from './enhancers/BaseEnhancer.js';
 export { generateId, findProductName } from './utils/index.js';

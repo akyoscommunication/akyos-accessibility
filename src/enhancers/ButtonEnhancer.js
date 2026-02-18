@@ -34,13 +34,26 @@ export class ButtonEnhancer extends BaseEnhancer {
       if (!isRepeated) return;
 
       const productName = findProductName(button, selectors);
+      if (this.options.auditOnly) {
+        items.push({
+          message: `Bouton répétitif sans aria-label contextuel : "${text}"`,
+          fix: 'Ajoutez aria-label avec le nom du produit : aria-label="Ajouter au panier : Nom du produit".',
+          element: button,
+          type: 'suggestion',
+          severity: 'info',
+          rgaaRef: '11.1',
+        });
+        return;
+      }
       if (productName) {
         const ariaLabel = `${text} : ${productName}`;
         button.setAttribute('aria-label', ariaLabel);
         items.push({
           message: `Bouton enrichi : ${text} (${productName})`,
+          description: 'Un aria-label a été ajouté avec le nom du produit pour donner du contexte aux lecteurs d\'écran.',
           element: button,
           type: 'enhancement',
+          rgaaRef: '11.1',
         });
       }
     });
