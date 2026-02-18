@@ -15,6 +15,7 @@ export { DocumentEnhancer } from './enhancers/DocumentEnhancer.js';
 export { ContrastEnhancer } from './enhancers/ContrastEnhancer.js';
 export { FocusEnhancer } from './enhancers/FocusEnhancer.js';
 export { render as renderVisualReport } from './VisualReport.js';
+export { renderMultiPageAudit } from './MultiPageAudit.js';
 export { renderAccessibilityPanel } from './AccessibilityPanel.js';
 export { loadReadSpeaker } from './ReadSpeakerLoader.js';
 export { readPage, isPageReaderAvailable } from './PageReader.js';

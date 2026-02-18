@@ -47,7 +47,26 @@ const DEFAULT_OPTIONS = {
   onReport: null,
   accessibilityToolbar: false,
   readSpeaker: false,
+  multiPageAudit: false,
+  excludeAkyosUI: false,
 };
+
+/** Sélecteurs des conteneurs UI Akyos à exclure de l'audit (toolbar, rapport, MPA) */
+const AKYOS_UI_SELECTORS = [
+  '#akyos-a11y-toolbar',
+  '.akyos-a11y-panel',
+  '.akyos-report-badge',
+  '.akyos-report-panel',
+  '.akyos-mpa',
+  '[class*="akyos-report"]',
+  '[class*="akyos-mpa"]',
+  '[class*="akyos-a11y"]',
+];
+
+function isInsideAkyosUI(el) {
+  if (!el || typeof el.closest !== 'function') return false;
+  return AKYOS_UI_SELECTORS.some((sel) => el.closest(sel));
+}
 
 /** En mode enhance : masquer les suggestions des catégories d'audit pur du rapport affiché */
 const AUDIT_ONLY_SOURCES = new Set([
@@ -96,6 +115,8 @@ export class AkyosAccessibility {
    * @param {function} [options.onReport] - Callback (report, instance) => void appelé à chaque rapport
    * @param {boolean} [options.accessibilityToolbar] - Afficher le panel d'accessibilité visuelle (daltonisme, taille du texte). Mode audit : désactivé par défaut.
    * @param {boolean|object} [options.readSpeaker] - Activer ReadSpeaker (lecteur vocal). false : désactivé (défaut). { readerId: string, lang?: string, rsConf?: object } : config complète (licence requise)
+   * @param {false|{scriptUrl: string, proxyUrl?: string, maxUrls?: number}} [options.multiPageAudit=false] - En mode audit : interface multi-pages. { scriptUrl, proxyUrl?, maxUrls? }
+   * @param {boolean} [options.excludeAkyosUI=false] - Exclure de l'audit les éléments de l'UI Akyos (toolbar, rapport, formulaire MPA). Utile pour l'audit multi-pages.
    */
   constructor(options = {}) {
     const opts = { ...DEFAULT_OPTIONS, ...options };
@@ -114,6 +135,7 @@ export class AkyosAccessibility {
     this.enhancerCategories = new Map();
     this.observer = null;
     this.lastReport = null;
+    this.lastMultiPageReport = null;
     this.init();
   }
 
@@ -225,6 +247,7 @@ export class AkyosAccessibility {
 
       items.forEach((raw) => {
         const item = normalizeItem(raw);
+        if (this.options.excludeAkyosUI && item.element && isInsideAkyosUI(item.element)) return;
         const entry = { ...item, source };
         if (item.type === 'conformant') {
           conformant.push(entry);
@@ -266,8 +289,13 @@ export class AkyosAccessibility {
 
     if (!silent) {
       const hasContent = enhancements.length > 0 || suggestions.length > 0 || conformant.length > 0;
-      if (this.options.visualReport && hasContent) {
-        renderVisualReport(displayReport);
+      const hasMultiPageAudit = this.options.mode === 'audit' && this.options.multiPageAudit && typeof this.options.multiPageAudit === 'object' && this.options.multiPageAudit.scriptUrl;
+      const showPanel = this.options.visualReport && (hasContent || hasMultiPageAudit);
+      if (showPanel) {
+        renderVisualReport(displayReport, {
+          instance: this,
+          multiPageAudit: hasMultiPageAudit ? this.options.multiPageAudit : null,
+        });
       }
       if (this.options.logReport && hasContent) {
         this.logReport({ enhancements, suggestions: displayReport.suggestions, conformant, mode: this.options.mode });
@@ -280,6 +308,14 @@ export class AkyosAccessibility {
    */
   getReport() {
     return this.lastReport;
+  }
+
+  /**
+   * Retourne le dernier rapport multi-pages (agrégé).
+   * Renseigné après un audit multi-pages terminé via l'interface.
+   */
+  getMultiPageReportJSON() {
+    return this.lastMultiPageReport;
   }
 
   /**

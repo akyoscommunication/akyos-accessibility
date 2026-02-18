@@ -1,9 +1,10 @@
 import { defineConfig } from 'tsup';
 
-export default defineConfig({
-  entry: {
-    index: 'src/index.ts',
-    'enhancers/lang': 'src/enhancers/LangEnhancer.js',
+export default [
+  defineConfig({
+    entry: {
+      index: 'src/index.ts',
+      'enhancers/lang': 'src/enhancers/LangEnhancer.js',
     'enhancers/link': 'src/enhancers/LinkEnhancer.js',
     'enhancers/skipLinks': 'src/enhancers/SkipLinkEnhancer.js',
     'enhancers/button': 'src/enhancers/ButtonEnhancer.js',
@@ -18,12 +19,24 @@ export default defineConfig({
     'enhancers/document': 'src/enhancers/DocumentEnhancer.js',
     'enhancers/contrast': 'src/enhancers/ContrastEnhancer.js',
     'enhancers/focus': 'src/enhancers/FocusEnhancer.js',
-  },
-  format: ['esm', 'cjs'],
-  dts: true,
-  sourcemap: false,
-  minify: 'terser',
-  clean: true,
-  treeshake: true,
-  splitting: true,
-});
+    },
+    format: ['esm', 'cjs'],
+    dts: true,
+    sourcemap: false,
+    minify: 'terser',
+    clean: true,
+    treeshake: true,
+    splitting: true,
+  }),
+  defineConfig({
+    entry: { 'audit-runner': 'src/audit-runner.js' },
+    format: ['iife'],
+    globalName: 'AkyosAccessibility',
+    outExtension: () => ({ js: '.js' }),
+    sourcemap: false,
+    minify: 'terser',
+    clean: false,
+    treeshake: true,
+    noExternal: [],
+  }),
+];

@@ -1,6 +1,7 @@
 import { exportReportToPdf } from './utils/pdfExport.js';
 import { getScoreLetter } from './utils/scoreUtils.js';
 import { getRgaaUrl } from './utils/rgaa.js';
+import { renderMultiPageAudit } from './MultiPageAudit.js';
 
 const HIGHLIGHT_DURATION = 2500;
 
@@ -83,16 +84,21 @@ function getSortedGroups(enhGroups, suggGroups, confGroups = {}) {
 
 /**
  * Affiche un rapport visuel d'accessibilité : badge score + panneau dépliable.
+ * @param {Object} report - Rapport d'accessibilité
+ * @param {Object} [options] - Options : { instance, multiPageAudit }
  */
-export function render(report) {
+export function render(report, options = {}) {
   if (typeof document === 'undefined') return;
 
-  const { enhancements = [], suggestions = [], score = 100 } = report;
+  const { enhancements = [], suggestions = [], score = 100, mode = 'enhance' } = report;
+  const multiPageAudit = options.multiPageAudit;
+  const hasMultiPageAudit = multiPageAudit && typeof multiPageAudit === 'object' && multiPageAudit.scriptUrl;
+  const auditModeMultipageOnly = mode === 'audit' && hasMultiPageAudit;
 
   injectStyles();
 
-  const badge = createBadge(score);
-  const panel = createPanel(report);
+  const badge = createBadge(score, auditModeMultipageOnly);
+  const panel = createPanel(report, options);
 
   badge.addEventListener('click', () => {
     panel.classList.toggle('akyos-report--open');
@@ -102,20 +108,25 @@ export function render(report) {
   document.body.appendChild(panel);
 }
 
-function createBadge(score) {
-  const letter = getScoreLetter(score);
+function createBadge(score, auditModeMultipageOnly = false) {
   const badge = document.createElement('button');
   badge.type = 'button';
   badge.className = 'akyos-report-badge';
-  badge.setAttribute('aria-label', `Rapport accessibilité : ${score}% (${letter}). Cliquer pour ouvrir.`);
-  badge.innerHTML = `
-    <span class="akyos-report-badge__score">${score}%</span>
-    <span class="akyos-report-badge__letter">${letter}</span>
-  `;
+  if (auditModeMultipageOnly) {
+    badge.setAttribute('aria-label', 'Audit multi-pages. Cliquer pour ouvrir.');
+    badge.innerHTML = `<span class="akyos-report-badge__audit">Audit</span>`;
+  } else {
+    const letter = getScoreLetter(score);
+    badge.setAttribute('aria-label', `Rapport accessibilité : ${score}% (${letter}). Cliquer pour ouvrir.`);
+    badge.innerHTML = `
+      <span class="akyos-report-badge__score">${score}%</span>
+      <span class="akyos-report-badge__letter">${letter}</span>
+    `;
+  }
   return badge;
 }
 
-function createPanel(report) {
+function createPanel(report, options = {}) {
   const { enhancements = [], suggestions = [], conformant = [], score = 100, scoreDetails = {}, mode = 'enhance' } = report;
   const letter = getScoreLetter(score);
   const panel = document.createElement('div');
@@ -136,9 +147,28 @@ function createPanel(report) {
   const firstTabCount = mode === 'audit' ? conformant.length : enhancements.length;
   const firstTabId = mode === 'audit' ? 'akyos-tab-conformant' : 'akyos-tab-enhancements';
 
-  panel.innerHTML = `
-    <div class="akyos-report-panel__header">
-      <h2 class="akyos-report-panel__title">${mode === 'audit' ? 'Audit accessibilité' : 'Rapport accessibilité'}</h2>
+  const multiPageAudit = options.multiPageAudit;
+  const hasMultiPageAudit = multiPageAudit && typeof multiPageAudit === 'object' && multiPageAudit.scriptUrl;
+  const auditModeMultipageOnly = mode === 'audit' && hasMultiPageAudit;
+
+  const multipageTabHtml = hasMultiPageAudit && !auditModeMultipageOnly
+    ? `
+      <button type="button" class="akyos-report-tab" role="tab" aria-selected="false" aria-controls="akyos-tab-multipage" id="akyos-tab-btn-multipage" data-tab="multipage">
+        Audit multi-pages
+      </button>
+    `
+    : '';
+  const multipagePanelHtml = hasMultiPageAudit
+    ? `
+    <div id="akyos-tab-multipage" class="akyos-report-tabpanel ${auditModeMultipageOnly ? '' : 'akyos-report-tabpanel--hidden'}" role="${auditModeMultipageOnly ? 'region' : 'tabpanel'}" aria-labelledby="${auditModeMultipageOnly ? 'akyos-report-panel-title' : 'akyos-tab-btn-multipage'}" ${auditModeMultipageOnly ? '' : 'hidden'}>
+      <div class="akyos-report-tabpanel__body"></div>
+    </div>
+    `
+    : '';
+
+  const headerScoreHtml = auditModeMultipageOnly
+    ? ''
+    : `
       <div class="akyos-report-score">
         <span class="akyos-report-score__value">${score}%</span>
         <span class="akyos-report-score__letter">${letter}</span>
@@ -151,7 +181,11 @@ function createPanel(report) {
       <div class="akyos-report-header-actions">
         <button type="button" class="akyos-report-pdf-btn" title="Exporter en PDF" aria-label="Exporter le rapport en PDF">PDF</button>
       </div>
-    </div>
+    `;
+
+  const tabsHtml = auditModeMultipageOnly
+    ? ''
+    : `
     <div class="akyos-report-tabs" role="tablist" aria-label="Sections du rapport">
       <button type="button" class="akyos-report-tab akyos-report-tab--active" role="tab" aria-selected="true" aria-controls="${firstTabId}" id="akyos-tab-btn-first" data-tab="first">
         ✓ ${firstTabLabel} <span class="akyos-report-tab__count">${firstTabCount}</span>
@@ -162,6 +196,7 @@ function createPanel(report) {
       <button type="button" class="akyos-report-tab" role="tab" aria-selected="false" aria-controls="akyos-tab-audit" id="akyos-tab-btn-audit" data-tab="audit">
         ${mode === 'audit' ? 'Audit complet' : 'Vue d\'ensemble'} <span class="akyos-report-tab__count">${enhancements.length + suggestions.length + conformant.length}</span>
       </button>
+      ${multipageTabHtml}
     </div>
     <div id="${firstTabId}" class="akyos-report-tabpanel" role="tabpanel" aria-labelledby="akyos-tab-btn-first">
       <div class="akyos-report-tabpanel__body"></div>
@@ -172,6 +207,15 @@ function createPanel(report) {
     <div id="akyos-tab-audit" class="akyos-report-tabpanel akyos-report-tabpanel--hidden" role="tabpanel" aria-labelledby="akyos-tab-btn-audit" hidden>
       <div class="akyos-report-tabpanel__body"></div>
     </div>
+    `;
+
+  panel.innerHTML = `
+    <div class="akyos-report-panel__header">
+      <h2 class="akyos-report-panel__title" id="akyos-report-panel-title">${mode === 'audit' ? 'Audit accessibilité' : 'Rapport accessibilité'}</h2>
+      ${headerScoreHtml}
+    </div>
+    ${tabsHtml}
+    ${multipagePanelHtml}
   `;
 
   const enhGroupsOnly = [];
@@ -208,59 +252,81 @@ function createPanel(report) {
     }
   });
 
-  const tabFirst = panel.querySelector(`#${firstTabId} .akyos-report-tabpanel__body`);
-  const tabSuggestions = panel.querySelector('#akyos-tab-suggestions .akyos-report-tabpanel__body');
-  const tabAudit = panel.querySelector('#akyos-tab-audit .akyos-report-tabpanel__body');
+  if (!auditModeMultipageOnly) {
+    const tabFirst = panel.querySelector(`#${firstTabId} .akyos-report-tabpanel__body`);
+    const tabSuggestions = panel.querySelector('#akyos-tab-suggestions .akyos-report-tabpanel__body');
+    const tabAudit = panel.querySelector('#akyos-tab-audit .akyos-report-tabpanel__body');
 
-  const firstTabGroups = mode === 'audit' ? confGroupsOnly : enhGroupsOnly;
-  const firstTabEmptyMsg = mode === 'audit'
-    ? 'Aucun point conforme détecté.'
-    : 'Aucune amélioration appliquée automatiquement.';
-  if (firstTabGroups.length === 0) {
-    tabFirst.innerHTML = `<p class="akyos-report-empty">${firstTabEmptyMsg}</p>`;
-  } else {
-    firstTabGroups.forEach(({ source, items, type, icon }) => {
-      tabFirst.appendChild(createCollapsibleGroup(source, items, type, icon));
-    });
-  }
-  if (suggGroupsOnly.length === 0) {
-    tabSuggestions.innerHTML = '<p class="akyos-report-empty">Aucun point à corriger manuellement.</p>';
-  } else {
-    suggGroupsOnly.forEach(({ source, items, type, icon }) => {
-      tabSuggestions.appendChild(createCollapsibleGroup(source, items, type, icon));
-    });
-  }
-  if (sortedGroups.length === 0) {
-    tabAudit.innerHTML = `<p class="akyos-report-empty">${mode === 'audit' ? 'Aucun élément audité.' : 'Aucun élément traité.'}</p>`;
-  } else {
-    sortedGroups.forEach(({ source, items, type, icon }) => {
-      tabAudit.appendChild(createCollapsibleGroup(source, items, type, icon));
-    });
-  }
-
-  const tabs = panel.querySelectorAll('.akyos-report-tab');
-  const tabpanels = panel.querySelectorAll('.akyos-report-tabpanel');
-  tabs.forEach((tab) => {
-    tab.addEventListener('click', () => {
-      const targetId = tab.getAttribute('aria-controls');
-      tabs.forEach((t) => {
-        t.classList.remove('akyos-report-tab--active');
-        t.setAttribute('aria-selected', 'false');
+    const firstTabGroups = mode === 'audit' ? confGroupsOnly : enhGroupsOnly;
+    const firstTabEmptyMsg = mode === 'audit'
+      ? 'Aucun point conforme détecté.'
+      : 'Aucune amélioration appliquée automatiquement.';
+    if (firstTabGroups.length === 0) {
+      tabFirst.innerHTML = `<p class="akyos-report-empty">${firstTabEmptyMsg}</p>`;
+    } else {
+      firstTabGroups.forEach(({ source, items, type, icon }) => {
+        tabFirst.appendChild(createCollapsibleGroup(source, items, type, icon));
       });
-      tab.classList.add('akyos-report-tab--active');
-      tab.setAttribute('aria-selected', 'true');
-      tabpanels.forEach((p) => {
-        const isActive = p.id === targetId;
-        p.classList.toggle('akyos-report-tabpanel--hidden', !isActive);
-        p.hidden = !isActive;
+    }
+    if (suggGroupsOnly.length === 0) {
+      tabSuggestions.innerHTML = '<p class="akyos-report-empty">Aucun point à corriger manuellement.</p>';
+    } else {
+      suggGroupsOnly.forEach(({ source, items, type, icon }) => {
+        tabSuggestions.appendChild(createCollapsibleGroup(source, items, type, icon));
+      });
+    }
+    if (sortedGroups.length === 0) {
+      tabAudit.innerHTML = `<p class="akyos-report-empty">${mode === 'audit' ? 'Aucun élément audité.' : 'Aucun élément traité.'}</p>`;
+    } else {
+      sortedGroups.forEach(({ source, items, type, icon }) => {
+        tabAudit.appendChild(createCollapsibleGroup(source, items, type, icon));
+      });
+    }
+
+    const tabs = panel.querySelectorAll('.akyos-report-tab');
+    const tabpanels = panel.querySelectorAll('.akyos-report-tabpanel');
+    tabs.forEach((tab) => {
+      tab.addEventListener('click', () => {
+        const targetId = tab.getAttribute('aria-controls');
+        tabs.forEach((t) => {
+          t.classList.remove('akyos-report-tab--active');
+          t.setAttribute('aria-selected', 'false');
+        });
+        tab.classList.add('akyos-report-tab--active');
+        tab.setAttribute('aria-selected', 'true');
+        tabpanels.forEach((p) => {
+          const isActive = p.id === targetId;
+          p.classList.toggle('akyos-report-tabpanel--hidden', !isActive);
+          p.hidden = !isActive;
+        });
       });
     });
-  });
 
-  const pdfBtn = panel.querySelector('.akyos-report-pdf-btn');
-  pdfBtn.addEventListener('click', () => {
-    exportReportToPdf(report);
-  });
+    const pdfBtn = panel.querySelector('.akyos-report-pdf-btn');
+    if (pdfBtn) {
+      pdfBtn.addEventListener('click', () => {
+        exportReportToPdf(report);
+      });
+    }
+  }
+
+  if (hasMultiPageAudit && options.instance) {
+    const tabMultipageBody = panel.querySelector('#akyos-tab-multipage .akyos-report-tabpanel__body');
+    if (tabMultipageBody) {
+      const instance = options.instance;
+      renderMultiPageAudit(tabMultipageBody, {
+        scriptUrl: multiPageAudit.scriptUrl,
+        proxyUrl: multiPageAudit.proxyUrl,
+        maxUrls: multiPageAudit.maxUrls ?? 20,
+        onComplete: (aggregatedReport) => {
+          instance.lastMultiPageReport = aggregatedReport;
+          if (typeof instance.options.onReport === 'function') {
+            instance.options.onReport(aggregatedReport, instance);
+          }
+        },
+      });
+    }
+  }
 
   return panel;
 }
@@ -465,6 +531,11 @@ function injectStyles() {
       font-size: 0.7rem;
       font-weight: 600;
       color: #67e8f9;
+    }
+    .akyos-report-badge__audit {
+      font-size: 0.85rem;
+      font-weight: 600;
+      color: #22d3ee;
     }
     .akyos-report-panel {
       position: fixed;

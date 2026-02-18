@@ -14,6 +14,8 @@ Librairie JavaScript légère qui améliore automatiquement l'accessibilité des
 - [ReadSpeaker (lecteur vocal)](#readspeaker-lecteur-vocal)
 - [Rapport visuel](#rapport-visuel)
 - [Export JSON et intégration CI](#export-json-et-intégration-ci)
+- [Audit multi-pages](#audit-multi-pages)
+- [Exclusion de l'UI Akyos](#exclusion-de-lui-akyos)
 - [Niveaux de sévérité](#niveaux-de-sévérité)
 - [Configuration](#configuration)
 - [API](#api)
@@ -215,6 +217,42 @@ new AkyosAccessibility({
 });
 ```
 
+## Audit multi-pages
+
+En mode `audit`, activez `multiPageAudit` pour auditer plusieurs URLs en une fois. Une interface permet de saisir une liste d'URLs (une par ligne), puis lance l'audit dans un iframe pour chaque page. Les rapports sont agrégés et retournés via le callback `onComplete`.
+
+| Option | Type | Description |
+|--------|------|-------------|
+| `scriptUrl` | string | URL du script d'audit (ex. `/audit-runner.js`). Doit pointer vers le build de la librairie. |
+| `proxyUrl` | string | (optionnel) URL du proxy pour contourner la CORS sur les pages externes. |
+| `maxUrls` | number | Nombre maximum d'URLs à auditer (défaut : 20). |
+
+```javascript
+new AkyosAccessibility({
+  mode: 'audit',
+  visualReport: true,
+  multiPageAudit: {
+    scriptUrl: '/audit-runner.js',
+    maxUrls: 20,
+  },
+});
+```
+
+## Exclusion de l'UI Akyos
+
+Lorsque vous utilisez `visualReport`, `accessibilityToolbar` ou `multiPageAudit`, la librairie injecte des éléments UI (badge, panneau, toolbar, formulaire MPA). Ces éléments sont audités par défaut et peuvent polluer le rapport.
+
+Activez `excludeAkyosUI: true` pour exclure ces éléments de l'audit. Le rapport ne contiendra alors que les suggestions relatives au **contenu réel de la page**.
+
+```javascript
+new AkyosAccessibility({
+  mode: 'audit',
+  visualReport: true,
+  multiPageAudit: { scriptUrl: '/audit-runner.js' },
+  excludeAkyosUI: true,  // Recommandé avec visualReport ou multiPageAudit
+});
+```
+
 ## Niveaux de sévérité
 
 Chaque item du rapport possède un champ `severity` pour prioriser les corrections :
@@ -256,6 +294,8 @@ new AkyosAccessibility({
   onReport: (report, instance) => {}, // Callback à chaque rapport
   accessibilityToolbar: false, // Panel d'accessibilité visuelle (daltonisme, taille du texte)
   readSpeaker: false,          // Lecteur vocal ReadSpeaker (readerId requis)
+  multiPageAudit: false,       // En mode audit : interface pour auditer plusieurs URLs
+  excludeAkyosUI: false,      // Exclure de l'audit les éléments UI Akyos (toolbar, rapport, MPA)
 });
 ```
 
